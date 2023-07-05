@@ -8,9 +8,8 @@ import java.util.UUID;
 
 public class CopyDetector {
 
-    private final int MULTICAST_SOCKET_PORT = 8000;
-    private final int MULTICAST_SOCKET_READ_TIMEOUT = 1000;
-    private final long ALIVE_TIMEOUT_MILLIS = 5000;
+    private static final int MULTICAST_SOCKET_READ_TIMEOUT = 1000;
+    private static final long ALIVE_TIMEOUT_MILLIS = 5000;
 
     private boolean working;
     private final UUID uuid;
@@ -21,17 +20,17 @@ public class CopyDetector {
     private final SocketAddress groupSocketAddress;
     private final NetworkInterface groupNetworkInterface;
 
-    public CopyDetector(String groupHostName, String groupNetworkInterfaceName) {
+    public CopyDetector(String groupHostName, int port, String groupNetworkInterfaceName) {
         working = true;
         uuid = UUID.randomUUID();
         copiesTimeouts = new HashMap<>();
         copiesInetAddresses = new HashMap<>();
         aliveCopiesListChanged = false;
         try {
-            multicastSocket = new MulticastSocket(MULTICAST_SOCKET_PORT);
+            multicastSocket = new MulticastSocket(port);
             multicastSocket.setSoTimeout(MULTICAST_SOCKET_READ_TIMEOUT);
             groupNetworkInterface = NetworkInterface.getByName(groupNetworkInterfaceName);
-            groupSocketAddress = new InetSocketAddress(groupHostName, MULTICAST_SOCKET_PORT);
+            groupSocketAddress = new InetSocketAddress(groupHostName, port);
         } catch (SocketException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
