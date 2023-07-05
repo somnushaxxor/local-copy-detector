@@ -1,5 +1,7 @@
 package ru.nsu.fit.kolesnik.localcopydetector;
 
+import ru.nsu.fit.kolesnik.localcopydetector.message.GroupMessage;
+
 import java.io.IOException;
 import java.net.*;
 import java.util.HashMap;
@@ -12,7 +14,7 @@ public class CopyDetector {
     private static final long ALIVE_TIMEOUT_MILLIS = 5000;
 
     private boolean working;
-    private final UUID uuid;
+    private final UUID currentInstanceUuid;
     private Map<UUID, Long> copiesTimeouts;
     private Map<UUID, InetAddress> copiesInetAddresses;
     private boolean aliveCopiesListChanged;
@@ -22,7 +24,7 @@ public class CopyDetector {
 
     public CopyDetector(String groupHostName, int port, String groupNetworkInterfaceName) {
         working = true;
-        uuid = UUID.randomUUID();
+        currentInstanceUuid = UUID.randomUUID();
         copiesTimeouts = new HashMap<>();
         copiesInetAddresses = new HashMap<>();
         aliveCopiesListChanged = false;
@@ -31,17 +33,15 @@ public class CopyDetector {
             multicastSocket.setSoTimeout(MULTICAST_SOCKET_READ_TIMEOUT);
             groupNetworkInterface = NetworkInterface.getByName(groupNetworkInterfaceName);
             groupSocketAddress = new InetSocketAddress(groupHostName, port);
-        } catch (SocketException e) {
-            throw new RuntimeException(e);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new CopyDetectorException("CopyDetector instantiation failed", e);
         }
     }
 
     public void start() {
         try {
-            GroupMessage outgoingGroupMessage = new GroupMessage(uuid, InetAddress.getLocalHost());
             multicastSocket.joinGroup(groupSocketAddress, groupNetworkInterface);
+            GroupMessage outgoingGroupMessage = new GroupMessage(currentInstanceUuid, InetAddress.getLocalHost());
             System.out.println("Detecting started!");
             while (working) {
                 sendGroupMessage(outgoingGroupMessage);
@@ -49,35 +49,31 @@ public class CopyDetector {
             }
             System.out.println("Detecting stopped!");
             terminate();
-        } catch (UnknownHostException e) {
-            throw new RuntimeException(e);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new CopyDetectorException("Failed to start detecting copies", e);
         }
-    }
-
-    public void stop() {
-        working = false;
     }
 
     private void sendGroupMessage(GroupMessage message) {
         try {
             byte[] messageBytes = message.getBytes();
-            DatagramPacket outgoingDatagramPacket = new DatagramPacket(messageBytes, messageBytes.length, groupSocketAddress);
+            DatagramPacket outgoingDatagramPacket = new DatagramPacket(messageBytes, messageBytes.length,
+                    groupSocketAddress);
             multicastSocket.send(outgoingDatagramPacket);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new CopyDetectorException("Failed to send group message", e);
         }
     }
 
     private void handleIncomingGroupMessages() {
-        DatagramPacket incomingDatagramPacket = new DatagramPacket(new byte[GroupMessage.SIZE_BYTES], GroupMessage.SIZE_BYTES, groupSocketAddress);
+        DatagramPacket incomingDatagramPacket = new DatagramPacket(new byte[GroupMessage.SIZE_BYTES],
+                GroupMessage.SIZE_BYTES, groupSocketAddress);
         try {
             while (true) {
                 multicastSocket.receive(incomingDatagramPacket);
                 Long incomingDatagramPacketReceiveTimeMillis = System.currentTimeMillis();
                 GroupMessage incomingGroupMessage = new GroupMessage(incomingDatagramPacket.getData());
-                if (!uuid.equals(incomingGroupMessage.getUuid())) {
+                if (!currentInstanceUuid.equals(incomingGroupMessage.getUuid())) {
                     if (!copiesTimeouts.containsKey(incomingGroupMessage.getUuid())) {
                         aliveCopiesListChanged = true;
                     }
@@ -88,7 +84,7 @@ public class CopyDetector {
         } catch (SocketTimeoutException e) {
             checkTimeouts();
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new CopyDetectorException("Failed to receive group message", e);
         }
         if (aliveCopiesListChanged) {
             printAliveCopiesList();
@@ -96,11 +92,6 @@ public class CopyDetector {
         } else {
             System.out.println("Alive copies list has not changed!");
         }
-    }
-
-    private void printAliveCopiesList() {
-        System.out.println("New alive copies list:");
-        copiesTimeouts.forEach((uuid, millis) -> System.out.println(copiesInetAddresses.get(uuid).getHostAddress()));
     }
 
     private void checkTimeouts() {
@@ -118,11 +109,20 @@ public class CopyDetector {
         copiesInetAddresses = newCopiesInetAddresses;
     }
 
+    private void printAliveCopiesList() {
+        System.out.println("New alive copies list:");
+        copiesTimeouts.forEach((uuid, millis) -> System.out.println(copiesInetAddresses.get(uuid).getHostAddress()));
+    }
+
+    public void stop() {
+        working = false;
+    }
+
     private void terminate() {
         try {
             multicastSocket.leaveGroup(groupSocketAddress, groupNetworkInterface);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new CopyDetectorException("CopyDetector termination failed", e);
         }
     }
 

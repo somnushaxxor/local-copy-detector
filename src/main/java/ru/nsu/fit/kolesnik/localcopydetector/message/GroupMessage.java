@@ -1,4 +1,6 @@
-package ru.nsu.fit.kolesnik.localcopydetector;
+package ru.nsu.fit.kolesnik.localcopydetector.message;
+
+import ru.nsu.fit.kolesnik.localcopydetector.util.UUIDUtils;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -7,9 +9,10 @@ import java.util.UUID;
 
 public class GroupMessage {
 
+    public static final int SIZE_BYTES = 32;
+
     private final UUID uuid;
     private final InetAddress inetAddress;
-    public final static int SIZE_BYTES = 32;
 
     public GroupMessage(UUID uuid, InetAddress inetAddress) {
         this.uuid = uuid;
@@ -28,7 +31,7 @@ public class GroupMessage {
         try {
             inetAddress = InetAddress.getByAddress(inetAddressBytes);
         } catch (UnknownHostException e) {
-            throw new RuntimeException(e);
+            throw new GroupMessageDeserializationException(e);
         }
     }
 
